@@ -1,0 +1,49 @@
+---
+- name: Configure Core Dump on Red Hat
+  hosts: your_server_group_name_here  # Replace with the appropriate host/group name
+  become: true
+
+  tasks:
+    - name: Check if available memory is greater than storage
+      script: check_memory_vs_storage.sh
+      register: memory_vs_storage_result
+      ignore_errors: true  # Ignore errors and continue with the playbook
+
+    - name: Fail the playbook if available memory is greater than storage
+      fail:
+        msg: "Error: Available memory ({{ memory_vs_storage_result.stdout }} MB) is greater than storage ({{ memory_vs_storage_result.stderr }} MB). Cannot proceed."
+      when: memory_vs_storage_result.rc == 1
+
+    - name: Create Core Dump Directory
+      file:
+        path: /var/coredumps
+        state: directory
+        mode: '0755'
+
+    - name: Enable Core Dump
+      lineinfile:
+        dest: /etc/security/limits.conf
+        line: "* soft core unlimited"
+        state: present
+        backup: yes
+
+    - name: Adjust Core Dump Pattern
+      lineinfile:
+        dest: /etc/sysctl.conf
+        line: "kernel.core_pattern=/var/coredumps/core.%e.%p.%t"
+        state: present
+        backup: yes
+
+    - name: Set Core Dump Permission
+      lineinfile:
+        dest: /etc/sysctl.conf
+        line: "fs.suid_dumpable=2"
+        state: present
+        backup: yes
+
+    - name: Load New Sysctl Settings
+      command: sysctl --system
+
+    - name: Display completion message
+      debug:
+        msg: "Core dump configuration completed successfully."
